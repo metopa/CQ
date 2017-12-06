@@ -16,7 +16,7 @@ ALL := CQtest CQtestM CQtestM4
 default: $(ALL)
 
 clean: 
-	$(RM) $(ALL)
+	$(RM) $(ALL) *.o
 
 # Link program for GEM5 execution
 %.m5: %.o

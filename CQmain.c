@@ -3,13 +3,13 @@
  *  Circular queue tester&main loop
  * @author Jiri Kaspar, CVUT FIT
  *
- * verze 0.9.9    26.11.2017
+ * verze 0.9.6    7.12.2017
  *
  *
  *
  */
 
-#define VERSION "0.9.5"
+#define VERSION "0.9.6"
 
 // #define _GNU_SOURCE je tu proto, aby fungovaly CPU_SET apod.
 #define _GNU_SOURCE
@@ -114,8 +114,9 @@ void *cq_thread (void *arg) {
 void CQ_help () {
   printf ("CQoptions: \n");
   printf ("-c --cpus list of cpus\n");
+  printf ("-t --threads #threads\n");
   printf ("-s --stages list of #threads in stages\n");
-  printf ("-t --types list of queue types \t 1=1 reader, N=broacast to all readers, B=barrier\n");
+  printf ("-T --types list of queue types \t 1=1 reader, N=broacast to all readers, B=barrier\n");
   printf ("-q --queuesizes list of queue sizes\n");
   printf ("-m --msgsizes list of message sizes\n");
   //    printf("-M --messages # messages sent from each writer\n");
@@ -183,7 +184,11 @@ int main (int argc, char **argv) {
 	}
 	t = strtok (NULL, ",.");
       }
-    } else if (((strcmp (argv[a], "-s") == 0) || (strcmp (argv[a], "--stages") == 0)) &&
+    } else if (((strcmp (argv[a], "-t") == 0) || (strcmp (argv[a], "--threads") == 0)) &&
+               (a + 1 < argc)) {
+      a++;
+      if (argv[a] && ((sscanf (argv[a], "%u", &num_threads) == 1))) {}
+     } else if (((strcmp (argv[a], "-s") == 0) || (strcmp (argv[a], "--stages") == 0)) &&
 	       (a + 1 < argc)) {
       a++;
       t = strtok (argv[a], ",.");
@@ -206,7 +211,7 @@ int main (int argc, char **argv) {
 	       (a + 1 < argc)) {
       a++;
       if (argv[a] && ((sscanf (argv[a], "%u", &cq_msgsizes[0]) == 1))) {}
-    } else if (((strcmp (argv[a], "-t") == 0) || (strcmp (argv[a], "--types") == 0)) &&
+    } else if (((strcmp (argv[a], "-T") == 0) || (strcmp (argv[a], "--types") == 0)) &&
 	       (a + 1 < argc)) {
       a++;
       t = strtok (argv[a], ",.");
@@ -271,7 +276,11 @@ int main (int argc, char **argv) {
     }
   }
   argv[appl_argc] = 0;
-  for (i = 0; i < num_stages - 1; i++) {
+  if (num_threads > 1) {
+    num_stages = num_threads;
+    for (i = 0; i < num_stages; i++) cq_stages[i] = 1;
+  }
+  for (i = 0; i < num_stages; i++) {
     cq_msgsizes[i] = cq_msgsizes[0];
     cq_optimizations[i] = cq_opt;
   }
@@ -288,22 +297,22 @@ int main (int argc, char **argv) {
   //  printf("%zd\n", stacksize);
   //  pthread_attr_destroy(&attr);
 
-  for (i = 0; i < num_stages - 1; i++) { // create queues
-    cq_queues[i] = CQ_init (cq_queuesizes[i], cq_msgsizes[i], cq_stages[i + 1], cq_stages[i],
+  for (i = 0; i < num_stages; i++) { // create queues
+    cq_queues[i] = CQ_init (cq_queuesizes[i], cq_msgsizes[i],
+			    cq_stages[(i + 1) % num_stages], cq_stages[i],
 			    cq_queuetypes[i], cq_optimizations[i]);
-    printf ("Queue %d: %d writers, %d readers, queuetype=%d, queuesize=%d, msgsize=%d, opt=%ld.\n",
-	    i, cq_stages[i], cq_stages[i + 1], cq_queuetypes[i], cq_queuesizes[i], cq_msgsizes[i],
-	    cq_optimizations[i]);
+    printf ("Queue %d: %d reader(s), %d writer(s), queuetype=%d, queuesize=%d, msgsize=%d, opt=%lx.\n",
+	    i, cq_stages[(i + 1) % num_stages], cq_stages[i],
+	    cq_queuetypes[i], cq_queuesizes[i], cq_msgsizes[i], cq_optimizations[i]);
   }
   num_threads = 0;
-  for (i = 0; i < num_stages; i++) { // count threads and open queue handles
-    if (i < num_stages - 1) {
-      cq_queues[i]->nextqueue = cq_queues[i+1];
-      if (i > 0) cq_queues[i]->prevqueue = cq_queues[i-1];
-    }
+  for (i = 0; i < num_stages; i++) { // concatenate queues, count threads and open queue handles
+    if (i < num_stages - 1) cq_queues[i]->nextqueue = cq_queues[i+1];
+    if (i > 0) cq_queues[i]->prevqueue = cq_queues[i-1];
     for (int k = 0; k < cq_stages[i]; k++) {
+      cq_outputs[num_threads] = cq_queues[i]->open (cq_queues[i], 1);
       if (i > 0) cq_inputs[num_threads] = cq_queues[i - 1]->open (cq_queues[i - 1], 0);
-      if (i < num_stages - 1) cq_outputs[num_threads] = cq_queues[i]->open (cq_queues[i], 1);
+      else cq_inputs[num_threads] = cq_queues[num_stages - 1]->open (cq_queues[num_stages - 1], 0);
       num_threads++;
     }
   }
@@ -342,11 +351,11 @@ int main (int argc, char **argv) {
 
   if (cq_opt & OPT_CNT) {
     int num_handles;
-    for (j = 0; j < num_stages - 1; j++) {
+    for (j = 0; j < num_stages; j++) {
       printf ("\nQueue\t%d\t\tMessages\n", j);
       printf ("Thread\tcpu\twritten    read       stolen     errors\n");
       ir = iw = is = ie = 0;
-      num_handles = cq_stages[j] + cq_stages[j+1];
+      num_handles = cq_stages[j] + cq_stages[(j+1) % num_stages];
       for (i = 0; i < num_handles; i++) {
 	h = cq_queues[j]->handles + i;
 	if (h) {

@@ -1,6 +1,6 @@
 /*
  * cq.h
- * verze 0.9.5	2.12.2017
+ * verze 0.9.6	7.12.2017
  *
  *  Circular queue interface
  * @author Jiri Kaspar
@@ -48,29 +48,29 @@
 #define OPT_PRERD 2
 #define OPT_PREWP 4
 #define OPT_PREWD 8
-#define OPT_PRE 15
-#define OPT_FLURP 16
-#define OPT_FLURD 32
-#define OPT_FLUWP 64
-#define OPT_FLUWD 128
-#define OPT_FLU 240
-#define OPT_NTMRP 256
-#define OPT_NTMRD 512
-#define OPT_NTMWP 1024
-#define OPT_NTMWD 2048
-#define OPT_NTM 3840
-#define OPT_LPUR 4096
-#define OPT_LPUW 8192
-#define OPT_CCA 16384
-#define OPT_DEBUG 32768
-#define OPT_WSTFW 65536
-#define OPT_WSTBW 131072
-#define OPT_WST 196608
-#define OPT_TRACE 262144
-#define OPT_CNT 524288
+#define OPT_PRE 0xf
+#define OPT_FLURP 0x10
+#define OPT_FLURD 0x20
+#define OPT_FLUWP 0x40
+#define OPT_FLUWD 0x80
+#define OPT_FLU 0xf0
+#define OPT_NTMRP 0x100
+#define OPT_NTMRD 0x200
+#define OPT_NTMWP 0x400
+#define OPT_NTMWD 0x800
+#define OPT_NTM 0xf00
+#define OPT_LPUR 0x1000
+#define OPT_LPUW 0x2000
+#define OPT_CCA 0x4000
+#define OPT_DEBUG 0x8000
+#define OPT_WSTFW 0x10000
+#define OPT_WSTBW 0x20000
+#define OPT_WST 0x30000
+#define OPT_TRACE 0x40000
+#define OPT_CNT 0x80000
 
 #define OPT_NONE 0
-#define OPT_ALL 1048575
+#define OPT_ALL 0xfffff
 
 // typy zpracovani zprav - jen jeden ctenar/broadcast/bariera
 #define RDR_1 0

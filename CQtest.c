@@ -3,7 +3,7 @@
  *  Circular queue tester
  * @author Jiri Kaspar, CVUT FIT
  *
- * verze 0.9.5	2.12.2017
+ * verze 0.9.7	9.12.2017
  *
  *
  *
@@ -62,10 +62,12 @@ volatile unsigned int sumrd = 0;	// read checksum
 void reader (CQhandle *h_in, char *buffer, CQhandle *h_out) {
   int j;
   unsigned char x;
-
   x = 0;
   for (j = 0; j < cq_msgsizes[0]; j++) x += buffer[j];
   if (x != 0) h_in->errcnt++;
+  if (h_in->id < 0) {
+    __sync_fetch_and_add (&sumrd, buffer[0]); // global read checksum
+  }
 }
 
 void forwarder (CQhandle *h_in, char *buffer, CQhandle *h_out) {
@@ -75,7 +77,7 @@ void forwarder (CQhandle *h_in, char *buffer, CQhandle *h_out) {
 
   queue = h_out->q;
   x = 0;
-  for (j = 0; j < cq_msgsizes[0]; j++) x ^= buffer[j];
+  for (j = 0; j < cq_msgsizes[0]; j++) x += buffer[j];
   if (x != 0) h_in->errcnt++;
   queue->writeMsg (h_out, buffer);
 }
@@ -83,9 +85,9 @@ void forwarder (CQhandle *h_in, char *buffer, CQhandle *h_out) {
 void writer (CQhandle *h) {
   int i, j;
   unsigned char c, x;
-  char *b;
+  unsigned char *b;
   CQ *queue;
-  int localsum = 0;
+  unsigned int localsum = 0;
   b = malloc (cq_msgsizes[0]);
   queue = h->q;
   for (i = 0; i < messages; i++) {
@@ -111,7 +113,7 @@ void appl_help () {
 }
 
 void appl_init (int argc, char **argv) {
-
+  int i;
   Dprintf("appl_init %d\n", argc);
   // process application options and parameters  before queues are created
   if (argc < 2) {
@@ -123,26 +125,27 @@ void appl_init (int argc, char **argv) {
   // it can change some options if they are incorect
   if (num_stages < 2) num_stages = 2;
   Dprintf("%d messages\n", messages);
+  // define worker routines
+  if (cq_opt & OPT_WST) {
+    for (i = 0; i < num_stages - 1; i++) cq_workers[i] = &forwarder;
+    cq_workers[num_stages - 2] = &reader;
+  }
 }
 
 void appl_run (int thread, int stage, int index, CQhandle *input, CQhandle *output) {
   // main application routine called from all threads
-  char *b;
+  unsigned char *b;
   CQ *queue = NULL;
-  int localsum = 0;
+  unsigned int localsum = 0;
 
   if (input) queue = input->q;
-  if (index == 0) { // finalize initialization: set worker routines if required
-    for (int i = 0; i < num_stages - 2; i++) {
-      if (cq_queues[i]) cq_queues[i]->worker = &forwarder;
-    }
-    cq_queues[num_stages - 2]->worker = &reader;
+  if (index == 0) { // finalize initialization
+//    cq_queues[num_stages - 2]->nextqueue = 0;
   }
   if (stage == 0) { // first stage = writer
     writer (output);
     output->q->close(output);
-  } else
-    if (input->q->optimizations & OPT_NTM) { // use own buffer
+  } else if (input->q->optimizations & OPT_NTM) { // use own buffer
     b = malloc (cq_msgsizes[0]);
     if (stage == num_stages - 1) { // last stage = reader
       while (!queue->isEof (input)) {

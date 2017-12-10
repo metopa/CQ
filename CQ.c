@@ -1,6 +1,6 @@
 /*
  * CQ.c
- * verze 0.9.5	2.12.2017
+ * verze 0.9.7	9.12.2017
  *
  * Circular queue routines
  * @author Jiri Kaspar
@@ -17,19 +17,19 @@
 #ifdef DEBUG
 #define Dprintf(f, v)                                                                              \
   {                                                                                                \
-    if (q->optimizations & OPT_DEBUG) printf (f, h->id, v);                                        \
+    if (cq_opt & OPT_DEBUG) printf (f, h->id, v);                                        \
   }
 #define Eprintf(f, v, w)                                                                           \
   {                                                                                                \
-    if (q->optimizations & OPT_DEBUG) printf (f, h->id, v, w);                                     \
+    if (cq_opt & OPT_DEBUG) printf (f, h->id, v, w);                                     \
   }
 #define Fprintf(f, v, w, x)                                                                        \
   {                                                                                                \
-    if (q->optimizations & OPT_DEBUG) printf (f, h->id, v, w, x);                                  \
+    if (cq_opt & OPT_DEBUG) printf (f, h->id, v, w, x);                                  \
   }
 #define Tprintf(f, v)                                                                              \
   {                                                                                                \
-    if (q->optimizations & OPT_TRACE) sprintf (h->trace, f, h->id, v);                             \
+    if (cq_opt & OPT_TRACE) sprintf (h->trace, f, h->id, v);                             \
   }
 #else
 #define Dprintf(f, v)                                                                              \
@@ -93,7 +93,8 @@ void CQ_idlereader (CQhandle *h); // scheduler - najde a obslouzi polozku z driv
 void CQ_busywriter (CQhandle *h); // scheduler - najde a obslouzi polozku z dalsi fronty
 
 CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short readertype,
-	     unsigned long optimizations) {
+	     unsigned long optimizations,
+             void (*worker) (CQhandle *h_in, char *buffer, CQhandle *h_out)) {
   CQ *this;
   CQentry *e;
   CQsimpleentry *se;
@@ -125,6 +126,7 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
   this->writers = writers;
   this->openreaders = 0;
   this->openwriters = 0;
+  this->stage = 0;
   strncpy (this->queuetype, "WnRn1", 8);
   this->eof = 0;
   this->allocated = 0;
@@ -133,10 +135,13 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
   this->tail = 0;
   this->read = 0;
   this->deallocated = 0;
+  this->stcnt = 0;
+  this->injcnt = 0;
+  this->errcnt = 0;
 
   this->buffers = malloc (this->queuesize * this->allocsize);
   if ((readers == 1) && (writers == 1) && (readertype == RDR_1) &&
-      (optimizations & OPT_WST == 0)) { // pro W1R1
+      (worker == 0)) { // pro W1R1
     this->queue = 0;
     this->simplequeue = malloc (this->queuesize * sizeof (CQsimpleentry));
     for (i = 0; i < this->queuesize; i++) {
@@ -185,12 +190,12 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
 
   this->prevqueue = 0;
   this->nextqueue = 0;
-  this->worker = 0;
+  this->worker = worker;
   this->idlereader = &CQ_idlereader;
   this->busywriter = &CQ_busywriter;
 
   if (readertype == RDR_1) {
-    if ((readers == 1) && (writers == 1) && (optimizations & OPT_WST == 0)) {
+    if ((readers == 1) && (writers == 1) && (worker == 0)) {
       // zjednodusene rutiny pro W1R1
       this->getBuffer = &W1R1_getBuffer;
       this->getBufferNW = &W1R1_getBufferNW;
@@ -200,7 +205,7 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
       this->putBuffer = &R1_putBuffer;
       this->isFull = &W1R1_isFull;
       strncpy (this->queuetype, "W1R1", 8);
-    } else if ((readers == 1) && (optimizations & OPT_WST == 0)) {
+    } else if ((readers == 1) && (worker == 0)) {
       // zjednodusene rutiny pro WnR11
       this->getMsg = &R11_getMsg;
       this->getMsgNW = &R11_getMsgNW;
@@ -214,6 +219,7 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
       strncpy (this->queuetype, "W1Rn1", 8);
     }
   } else {
+    this->worker = 0;
     this->getMsg = &Rnn_getMsg;
     this->getMsgNW = &Rnn_getMsgNW;
     if (readertype == RDR_B) {
@@ -287,7 +293,7 @@ char *Wn_getBuffer (CQhandle *h) { // doda volny buffer pro zapis zpravy
   do {
     while ((old = q->allocated) - q->deallocated == q->queuesize) {
       // ~delsi cekani - na precteni zpravy ctenarem
-      if (q->optimizations & OPT_WSTFW) q->busywriter (h);
+      if (cq_opt & OPT_WSTFW) q->busywriter (h);
     }
     index = old & q->mask;
     e = q->queue + index;
@@ -333,7 +339,7 @@ void Wn_putMsg (CQhandle *h, char *buffer) { // zaradi buffer se zpravou do fron
   while (q->head < old) { // ~kratke cekani - jen zapis pripravene zpravy jinym pisarem
   }
   q->head = old + 1;
-  if (q->optimizations & OPT_CNT) h->wrcnt++;
+  if (cq_opt & OPT_CNT) h->wrcnt++;
   //    Dprintf("W%ld:putMsg %s\n", "done")
 }
 
@@ -352,7 +358,7 @@ char *Rn1_getMsg (CQhandle *h) { // doda buffer se zpravou
     while ((old = q->tail) == q->head) {
       // ~delsi cekani - na zapis zpravy pisarem
       if (q->eof) return 0;
-      if ((q->prevqueue) && (q->optimizations & OPT_WSTBW)) q->idlereader (h);
+      if ((q->prevqueue) && (cq_opt & OPT_WSTBW)) q->idlereader (h);
     }
     index = old & q->mask;
     e = q->queue + index;
@@ -361,7 +367,7 @@ char *Rn1_getMsg (CQhandle *h) { // doda buffer se zpravou
     success = __sync_bool_compare_and_swap (&q->tail, old, new);
   } while (!success);
   //    Dprintf("R%ld:getMsg %p\n",b)
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -380,7 +386,7 @@ char *Rn1_getMsgNW (CQhandle *h) { // doda buffer se zpravou, neni-li, neceka
   new = old + 1;
   success = __sync_bool_compare_and_swap (&q->tail, old, new);
   if (!success) return 0;
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -415,13 +421,13 @@ char *Rnn_getMsg (CQhandle *h) { // doda buffer se zpravou
   while ((old = h->tail) == q->head) {
     // ~delsi cekani - na zapis zpravy pisarem
     if (q->eof) return 0;
-    if ((q->prevqueue) && (q->optimizations & OPT_WSTBW)) q->idlereader (h);
+    if ((q->prevqueue) && (cq_opt & OPT_WSTBW)) q->idlereader (h);
   }
   index = old & q->mask;
   e = q->queue + index;
   b = e->buffer;
   //    Dprintf("R%ld:getMsg %p\n",b)
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -437,7 +443,7 @@ char *Rnn_getMsgNW (CQhandle *h) { // doda buffer se zpravou, neni-li, neceka
   index = old & q->mask;
   e = q->queue + index;
   b = e->buffer;
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -493,7 +499,7 @@ char *W1_getBuffer (CQhandle *h) { // doda volny buffer pro zapis zpravy
   //    Dprintf("W%ld:getBuffer %s\n"," ")
   while ((old = q->head) - q->deallocated == q->queuesize) {
     // ~delsi cekani - na precteni zpravy ctenarem
-    if (q->optimizations & OPT_WSTFW) q->busywriter (h);
+    if (cq_opt & OPT_WSTFW) q->busywriter (h);
   }
   q->allocated += 1;
   index = old & q->mask;
@@ -525,7 +531,7 @@ void W1_putMsg (CQhandle *h, char *buffer) { // zaradi buffer se zpravou do fron
 
   q = h->q;
   q->head += 1;
-  if (q->optimizations & OPT_CNT) h->wrcnt++;
+  if (cq_opt & OPT_CNT) h->wrcnt++;
 }
 
 // R11 = 1 ctenar
@@ -541,13 +547,13 @@ char *R11_getMsg (CQhandle *h) { // doda buffer se zpravou
   while ((old = q->tail) == q->head) {
     // ~delsi cekani - na zapis zpravy pisarem
     if (q->eof) return 0;
-    if ((q->prevqueue) && (q->optimizations & OPT_WSTBW)) q->idlereader (h);
+    if ((q->prevqueue) && (cq_opt & OPT_WSTBW)) q->idlereader (h);
   }
   index = old & q->mask;
   e = q->queue + index;
   b = e->buffer;
   //    Dprintf("R%ld:getMsg %p\n",b)
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -564,7 +570,7 @@ char *R11_getMsgNW (CQhandle *h) { // doda buffer se zpravou, neni-li, neceka
   e = q->queue + index;
   b = e->buffer;
   //    Dprintf("R%ld:getMsg %p\n",b)
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -590,7 +596,7 @@ char *W1R1_getBuffer (CQhandle *h) { // doda volny buffer pro zapis zpravy
   //    Dprintf("W%ld:getBuffer %s\n"," ")
   while ((old = q->head) - q->tail == q->queuesize) {
     // ~delsi cekani - na precteni zpravy ctenarem
-    if (q->optimizations & OPT_WSTFW) q->busywriter (h);
+    if (cq_opt & OPT_WSTFW) q->busywriter (h);
   }
   index = old & q->mask;
   e = e + index;
@@ -630,13 +636,13 @@ char *W1R1_getMsg (CQhandle *h) { // doda buffer se zpravou
   while ((old = q->tail) == q->head) {
     // ~delsi cekani - na zapis zpravy pisarem
     if (q->eof) return 0;
-    if ((q->prevqueue) && (q->optimizations & OPT_WSTBW)) q->idlereader (h);
+    if ((q->prevqueue) && (cq_opt & OPT_WSTBW)) q->idlereader (h);
   }
   index = old & q->mask;
   e = e + index;
   b = e->buffer;
   //    Dprintf("R%ld:getMsg %p\n",b)
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -653,7 +659,7 @@ char *W1R1_getMsgNW (CQhandle *h) { // doda buffer se zpravou, neni-li, neceka
   index = old & q->mask;
   e = e + index;
   b = e->buffer;
-  if (q->optimizations & OPT_CNT) h->rdcnt++;
+  if (cq_opt & OPT_CNT) h->rdcnt++;
   return b;
 }
 
@@ -741,12 +747,20 @@ void CQ_idlereader (CQhandle *h) { // scheduler - najde a obslouzi polozku z dri
       h_out.q = q->nextqueue;
       h_out.rdwr = 1;
       h_out.id = -2;
-      h_out.errcnt = 0;
+      h_out.wrcnt = 0;
       if ((b = q->getMsgNW (&h_in))) {
 	q->worker (&h_in, b, &h_out);
 	q->putBuffer (&h_in, b);
-	if (q->optimizations & OPT_CNT) h->stcnt++;
-	h->errcnt += h_in.errcnt;
+	if (cq_opt & OPT_CNT) {
+	  h->stcnt++;				// handle steal counter
+          __sync_fetch_and_add (&q->stcnt, 1);  // queue steal counter
+          if (h_in.errcnt) {
+	    __sync_fetch_and_add (&q->errcnt, 1);  // queue error counter
+	    h->errcnt += 1;
+	  }
+          if (h_out.q && h_out.wrcnt)
+	    __sync_fetch_and_add (&h_out.q->injcnt, 1);  // queue inject counter
+	}
 	return;
       }
       if (q->eof) return;
@@ -770,12 +784,20 @@ void CQ_busywriter (CQhandle *h) { // scheduler - najde a obslouzi polozku z dal
       h_out.q = q->nextqueue;
       h_out.rdwr = 1;
       h_out.id = -4;
-      h_out.errcnt = 0;
-      if ((b = q->getMsgNW (&h_in))) {
+      h_out.wrcnt = 0;
+      if (b = q->getMsgNW (&h_in)) {
 	q->worker (&h_in, b, &h_out);
 	q->putBuffer (&h_in, b);
-	if (q->optimizations & OPT_CNT) h->stcnt++;
-	h->errcnt += h_in.errcnt;
+        if (cq_opt & OPT_CNT) {
+          h->stcnt++;                           // handle steal counter
+          __sync_fetch_and_add (&q->stcnt, 1);  // queue steal counter
+	  if (h_in.errcnt) {
+	    __sync_fetch_and_add (&q->errcnt, 1);  // queue error counter
+	    h->errcnt += 1;
+	  }
+          if (h_out.q && h_out.wrcnt)
+	    __sync_fetch_and_add (&h_out.q->injcnt, 1);  // queue inject counter
+	}
 	return;
       }
     }

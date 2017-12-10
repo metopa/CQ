@@ -1,6 +1,6 @@
 /*
  * CQmutex.c
- * verze 0.9.3	5.12.2015
+ * verze 0.9.7	9.12.2017
  *
  * Circular queue routines protected by a mutex
  * @author Jiri Kaspar
@@ -65,7 +65,9 @@ void Rnn_putBuffer (CQhandle *h, char *buffer); /* vrati buffer s prectenou zpra
 void Rnb_putBuffer (CQhandle *h, char *buffer); /* vrati buffer s prectenou zpravou */
 
 CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short readertype,
-	     unsigned long optimizations) {
+	     	unsigned long optimizations, 
+		void (*worker) (CQhandle *h_in, char *buffer, CQhandle *h_out)
+	    ) {
   CQ *this;
   CQentry *e;
   CQsimpleentry *se;

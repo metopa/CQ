@@ -1,6 +1,6 @@
 /*
  * cq.h
- * verze 0.9.6	7.12.2017
+ * verze 0.9.7	9.12.2017
  *
  *  Circular queue interface
  * @author Jiri Kaspar
@@ -8,6 +8,13 @@
  * pred include je treba definovat hodnoty SHARED a ALLIGNED
  *
  */
+
+#ifndef CQ_INCLUDE
+#define CQ_INCLUDE
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include <pthread.h>
 
@@ -108,6 +115,7 @@ typedef struct CQ {			 // fronta - sdilena struktura
   short readers, writers;		 // predpokladany pocet ctenaru/pisaru
   SHARED short openreaders, openwriters; // aktualni pocet ctenaru/pisaru
   long optimizations;			 // zapnute optimalizace
+  long stage;				 // faze zpracovani v pipeline
   char queuetype[8]; // typ fronty: W1R1, W1Rn1, W1Rnn, W1Rnb, WnR1, WnRn1, WnRnn,WnRnb
 #ifdef MUTEX
   pthread_mutex_t *mutex;			      // lock
@@ -149,10 +157,15 @@ typedef struct CQ {			 // fronta - sdilena struktura
 				// tj. prvni nezafrontovanou
   SHARED long ALIGNED
       deallocated; // ukazatel za posledni vraceny buffer, tj. na posledni zapisovany nebo obsazeny
+  SHARED long stcnt;	// logovani: citac ukradenych zprav
+  SHARED long injcnt;	// logovani: citac injectovanych zprav
+  SHARED long errcnt;	// logovani: citac poskozenych zprav
 } CQ;
 
 CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short readertype,
-	     unsigned long optimizations);
+	     unsigned long optimizations,
+	     void (*worker) (CQhandle *h_in, char *buffer, CQhandle *h_out)
+	    );
 
 void CQ_help ();
 
@@ -165,6 +178,9 @@ extern unsigned int num_threads;			// pocet obsluznych vlaken
 extern unsigned int cq_cpus[MAX_THREADS];		// cisla pouzitych cpu
 extern unsigned int cq_stages[MAX_THREADS];		// pocty vlaken pro jednotlive faze pipeline
 extern unsigned int num_stages;				// pocet fazi v pipeline
+extern void (*cq_workers [MAX_THREADS]) (CQhandle *h_in,
+				     char *buffer, 
+				     CQhandle *h_out);	// pole ukazatelu na workery
 extern unsigned int cq_queuetypes[MAX_THREADS];		// typy front pro jednotlive faze pipeline
 extern unsigned int cq_queuesizes[MAX_THREADS];		// delky front
 extern unsigned long int cq_optimizations[MAX_THREADS]; // volby front
@@ -177,3 +193,9 @@ extern pthread_t cq_threads[MAX_THREADS];	// vlakna
 extern CQ *cq_queues[MAX_THREADS];		// fronty
 extern CQhandle *cq_inputs[MAX_THREADS];	// vstupy
 extern CQhandle *cq_outputs[MAX_THREADS];	// vystupy
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

@@ -3,7 +3,7 @@
  *  Circular queue tester&main loop
  * @author Jiri Kaspar, CVUT FIT
  *
- * verze 0.9.6    7.12.2017
+ * verze 0.9.7    9.12.2017
  *
  *
  *
@@ -57,6 +57,9 @@ unsigned int num_threads;			 // pocet obsluznych vlaken
 unsigned int cq_cpus[MAX_THREADS];		 // cisla pouzitych cpu
 unsigned int cq_stages[MAX_THREADS];		 // pocty vlaken pro jednotlive faze pipeline
 unsigned int num_stages;			 // pocet fazi v pipeline
+void (*cq_workers [MAX_THREADS]) (CQhandle *h_in,
+                                  char *buffer,
+                                  CQhandle *h_out);  // pole workeru
 unsigned int cq_queuetypes[MAX_THREADS];	 // typy front pro jednotlive faze pipeline
 unsigned int cq_queuesizes[MAX_THREADS];	 // delky front
 unsigned long int cq_optimizations[MAX_THREADS]; // volby front
@@ -159,6 +162,7 @@ int main (int argc, char **argv) {
   for (i = 0; i < MAX_THREADS; i++) { // default setting
     cq_cpus[i] = i;
     cq_stages[i] = 0;
+    cq_workers[i] = 0;
     cq_queuetypes[i] = RDR_1;
     cq_queuesizes[i] = 64;
     cq_msgsizes[i] = 128;
@@ -296,14 +300,22 @@ int main (int argc, char **argv) {
   //  pthread_attr_getstacksize(&attr, &stacksize);
   //  printf("%zd\n", stacksize);
   //  pthread_attr_destroy(&attr);
-
+  int wrcorrections[MAX_THREADS];
+  for (i = 0; i < num_stages; i++) wrcorrections[i] = 0;
+  for (i = 0; i < num_stages; i++) 
+    if (cq_optimizations[i] & OPT_WSTFW) wrcorrections[(i + 1) % num_stages] = 1;
+  for (i = 0; i < num_stages; i++)
+    if (cq_optimizations[i] & OPT_WSTBW) wrcorrections[i] = 1;
   for (i = 0; i < num_stages; i++) { // create queues
     cq_queues[i] = CQ_init (cq_queuesizes[i], cq_msgsizes[i],
-			    cq_stages[(i + 1) % num_stages], cq_stages[i],
-			    cq_queuetypes[i], cq_optimizations[i]);
-    printf ("Queue %d: %d reader(s), %d writer(s), queuetype=%d, queuesize=%d, msgsize=%d, opt=%lx.\n",
-	    i, cq_stages[(i + 1) % num_stages], cq_stages[i],
-	    cq_queuetypes[i], cq_queuesizes[i], cq_msgsizes[i], cq_optimizations[i]);
+			    cq_stages[(i + 1) % num_stages],
+			    cq_stages[i] + wrcorrections[i],
+			    cq_queuetypes[i], cq_optimizations[i], cq_workers[i]);
+    printf ("Queue %d: %d reader(s), %d writer(s), queuetype=%d, queuesize=%d, msgsize=%d, opt=%lx, work=%c.\n",
+	    i, cq_stages[(i + 1) % num_stages], cq_stages[i] + wrcorrections[i],
+	    cq_queuetypes[i], cq_queuesizes[i], cq_msgsizes[i],
+	    cq_optimizations[i], cq_workers[i]?'Y':'N');
+    cq_queues[i]->stage = i;
   }
   num_threads = 0;
   for (i = 0; i < num_stages; i++) { // concatenate queues, count threads and open queue handles
@@ -352,7 +364,7 @@ int main (int argc, char **argv) {
   if (cq_opt & OPT_CNT) {
     int num_handles;
     for (j = 0; j < num_stages; j++) {
-      printf ("\nQueue\t%d\t\tMessages\n", j);
+      printf ("\nQueue\t%d %s\t\tMessages\n", j, cq_queues[j]->queuetype);
       printf ("Thread\tcpu\twritten    read       stolen     errors\n");
       ir = iw = is = ie = 0;
       num_handles = cq_stages[j] + cq_stages[(j+1) % num_stages];
@@ -375,9 +387,12 @@ int main (int argc, char **argv) {
 	ii = iw;
       else
 	ii = cq_stages[j + 1] * iw;
+          printf ("WST\t-\t%-11ld%-11ld%-11ld%ld\n", cq_queues[j]->injcnt, cq_queues[j]->stcnt, 0L,
+                  cq_queues[j]->errcnt);
       printf ("-------------------------------------------------------------\n");
-      printf ("Total:   \t%-11lld%-11lld%-11lld%lld\n", iw, ir, is, ie);
-      printf ("Lost:    \t%lld\n", ii - ir - is);
+      printf ("Total:\t\t%-11lld%-11lld%-11lld%lld\n", iw + cq_queues[j]->injcnt, 
+							ir + cq_queues[j]->stcnt, is, ie);
+       printf ("Lost:    \t%lld\n", ii - ir - cq_queues[j]->stcnt + cq_queues[j]->injcnt);
       if (milisec) {
 	printf ("Throughput:\t%lld messages/sec\n", ii * 1000 / milisec);
       } else {

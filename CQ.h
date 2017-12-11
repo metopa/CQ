@@ -5,7 +5,7 @@
  *  Circular queue interface
  * @author Jiri Kaspar
  *
- * pred include je treba definovat hodnoty SHARED a ALLIGNED
+ * pred include je treba definovat hodnoty SHARED a ALIGNED
  *
  */
 

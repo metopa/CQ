@@ -14,6 +14,8 @@
 
 #ifdef __cplusplus
 extern "C" {
+namespace cq {
+namespace c {
 #endif
 
 #include <pthread.h>
@@ -195,7 +197,9 @@ extern CQhandle *cq_inputs[MAX_THREADS];	// vstupy
 extern CQhandle *cq_outputs[MAX_THREADS];	// vystupy
 
 #ifdef __cplusplus
-}
+} // namespace c
+} // namespace cq
+} // extern "C"
 #endif
 
 #endif

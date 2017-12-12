@@ -169,33 +169,6 @@ CQ *CQ_init (long queuesize, long itemsize, short readers, short writers, short 
 	     void (*worker) (CQhandle *h_in, char *buffer, CQhandle *h_out)
 	    );
 
-void CQ_help ();
-
-void appl_help ();
-void appl_init (int argc, char **argv);
-void appl_run (int thread, int stage, int index, CQhandle *input, CQhandle *output);
-void appl_stat ();
-
-extern unsigned int num_threads;			// pocet obsluznych vlaken
-extern unsigned int cq_cpus[MAX_THREADS];		// cisla pouzitych cpu
-extern unsigned int cq_stages[MAX_THREADS];		// pocty vlaken pro jednotlive faze pipeline
-extern unsigned int num_stages;				// pocet fazi v pipeline
-extern void (*cq_workers [MAX_THREADS]) (CQhandle *h_in,
-				     char *buffer, 
-				     CQhandle *h_out);	// pole ukazatelu na workery
-extern unsigned int cq_queuetypes[MAX_THREADS];		// typy front pro jednotlive faze pipeline
-extern unsigned int cq_queuesizes[MAX_THREADS];		// delky front
-extern unsigned long int cq_optimizations[MAX_THREADS]; // volby front
-extern unsigned int cq_msgsizes[MAX_THREADS];		// delky zprav
-extern unsigned long int cq_opt;			// zvolene optimalizace
-extern unsigned int cq_tracestart;			// cas pocatku detailnich vypisu
-extern unsigned int cq_traceint;			// interval mezi vypisy
-
-extern pthread_t cq_threads[MAX_THREADS];	// vlakna
-extern CQ *cq_queues[MAX_THREADS];		// fronty
-extern CQhandle *cq_inputs[MAX_THREADS];	// vstupy
-extern CQhandle *cq_outputs[MAX_THREADS];	// vystupy
-
 #ifdef __cplusplus
 } // namespace c
 } // namespace cq

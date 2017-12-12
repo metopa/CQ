@@ -37,17 +37,17 @@ clean:
 	@echo '$(CC)  $(CFLAGS) $< $(LFLAGS)  -o $@'
 	@$(CC) $(CFLAGS) $< $(LFLAGS) -o $@
 
-CQtest: CQtest.o CQ.o CQmain.o
-	@echo '$(CC)  CQmain.o CQtest.o CQ.o $(LFLAGS)  -o $@'
-	@$(CC) CQmain.o CQtest.o CQ.o $(LFLAGS) -o $@
+CQtest: CQtest.o CQ.o CQpipeline.o
+	@echo '$(CC)  CQpipeline.o CQtest.o CQ.o $(LFLAGS)  -o $@'
+	@$(CC) CQpipeline.o CQtest.o CQ.o $(LFLAGS) -o $@
 
-CQtestM: CQtest.o CQmutex.o CQmain.o
-	@echo '$(CC)  CQtest.o CQmutex.o CQmain.o $(LFLAGS)  -o $@'
-	@$(CC) CQtest.o CQmutex.o CQmain.o $(LFLAGS) -o $@
+CQtestM: CQtest.o CQmutex.o CQpipeline.o
+	@echo '$(CC)  CQtest.o CQmutex.o CQpipeline.o $(LFLAGS)  -o $@'
+	@$(CC) CQtest.o CQmutex.o CQpipeline.o $(LFLAGS) -o $@
 
-CQtestM4: CQtest.o CQmutex4.o CQmain.o
-	@echo '$(CC)  CQtest.o CQmutex4.o CQmain.o $(LFLAGS)  -o $@'
-	@$(CC) CQtest.o CQmutex4.o CQmain.o $(LFLAGS) -o $@
+CQtestM4: CQtest.o CQmutex4.o CQpipeline.o
+	@echo '$(CC)  CQtest.o CQmutex4.o CQpipeline.o $(LFLAGS)  -o $@'
+	@$(CC) CQtest.o CQmutex4.o CQpipeline.o $(LFLAGS) -o $@
 
 CQtestM.o: CQtest.c CQ.h Makefile
 	@echo '$(CC) $(CFLAGS) -DMUTEX -c CQtest.c -o $@'
@@ -61,7 +61,7 @@ CQmutex4.o: CQmutex4.c CQ.h Makefile
 	@echo '$(CC) $(CFLAGS) -DMUTEX -c $< -o $@'
 	@$(CC)  $(CFLAGS) -DMUTEX -c $< -o $@
 
-CQmain.o: CQmain.c CQ.h Makefile
+CQpipeline.o: CQpipeline.c CQ.h Makefile
 CQtest.o: CQtest.c CQ.h Makefile
 CQ.o: CQ.c CQ.h Makefile
 

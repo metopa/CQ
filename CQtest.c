@@ -9,7 +9,7 @@
  *
  */
 
-#define VERSION "0.9.5"
+#define VERSION "0.9.7"
 
 // #define _GNU_SOURCE je tu proto, aby fungovaly CPU_SET apod.
 #define _GNU_SOURCE
